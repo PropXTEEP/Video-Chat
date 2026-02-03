@@ -13,17 +13,20 @@ def get_global_data():
             "The Citadel": {"# general": [], "# memes": []},
             "Deep Thoughts": {"# philosophy": [], "# logic": []}
         },
-        "active_users": {} 
+        "active_users": {},
+        "user_xp": {} # Track message counts for levels
     }
 
 global_db = get_global_data()
 session_id = str(id(st.session_state))
 
-# --- IDENTITY SYNC ---
+# --- IDENTITY & XP SYNC ---
 if "user_name" not in st.session_state:
     st.session_state.user_name = f"Gooner_{id(st.session_state) % 1000}"
 if "my_status" not in st.session_state:
     st.session_state.my_status = "Chilling"
+if session_id not in global_db["user_xp"]:
+    global_db["user_xp"][session_id] = 0
 
 # --- THEME LOGIC ---
 with st.sidebar:
@@ -38,6 +41,7 @@ if goon_mode:
             .member-box { background-color: #000; border: 1px solid #bc13fe; color: #39ff14; box-shadow: 0 0 10px #bc13fe; padding: 8px; border-radius: 4px; margin-bottom: 5px; }
             .stChatMessage { background-color: #111; border: 1px solid #39ff14 !important; }
             h1, h2, h3, p, span, label { color: #39ff14 !important; }
+            .stProgress > div > div > div > div { background-color: #bc13fe; }
         </style>
         """, unsafe_allow_html=True)
 else:
@@ -49,9 +53,15 @@ else:
         </style>
         """, unsafe_allow_html=True)
 
-# --- SIDEBAR CONTENT ---
+# --- SIDEBAR ---
 with st.sidebar:
-    with st.expander("👤 Profile Settings", expanded=False):
+    # XP / Level Progress
+    xp = global_db["user_xp"][session_id]
+    level = (xp // 5) + 1
+    st.write(f"**Level {level} Gooner** ({xp % 5}/5 XP to next level)")
+    st.progress((xp % 5) / 5)
+
+    with st.expander("👤 Profile Settings"):
         temp_name = st.text_input("Username", value=st.session_state.user_name)
         temp_stat = st.text_input("Status", value=st.session_state.my_status)
         if st.button("Save Profile"):
@@ -67,9 +77,8 @@ with st.sidebar:
     channel = st.radio("Channels", list(global_db["messages"][server].keys()))
     
     st.divider()
-    st.write("### 📤 Media Studio")
+    st.write("### 📤 Media Studio (2GB Limit)")
     
-    # Audio Recorder
     recorded_audio = st.audio_input("Record Voice")
     if recorded_audio and st.button("🎤 Send Recording"):
         b64 = base64.b64encode(recorded_audio.read()).decode()
@@ -77,27 +86,21 @@ with st.sidebar:
             "user": st.session_state.user_name, "time": datetime.datetime.now().strftime("%I:%M %p"), 
             "content": "", "image": None, "audio": b64, "video": None
         })
+        global_db["user_xp"][session_id] += 1
         st.rerun()
 
-    # File Uploader (Images & Video)
-    uploaded_file = st.file_uploader("Upload Image or Video", type=["png", "jpg", "jpeg", "mp4", "mov"])
+    uploaded_file = st.file_uploader("Upload Image/Video", type=["png", "jpg", "jpeg", "mp4", "mov"])
     if uploaded_file and st.button("🚀 Post File"):
-        file_bytes = uploaded_file.getvalue()
-        b64 = base64.b64encode(file_bytes).decode()
-        file_type = uploaded_file.type.split('/')[0] # 'image' or 'video'
+        b64 = base64.b64encode(uploaded_file.getvalue()).decode()
+        file_type = uploaded_file.type.split('/')[0]
         
-        msg_data = {
-            "user": st.session_state.user_name, 
-            "time": datetime.datetime.now().strftime("%I:%M %p"), 
-            "content": "", "image": None, "audio": None, "video": None
-        }
-        
-        if file_type == "image":
-            msg_data["image"] = b64
-        elif file_type == "video":
-            msg_data["video"] = b64
+        msg_data = {"user": st.session_state.user_name, "time": datetime.datetime.now().strftime("%I:%M %p"), 
+                    "content": "", "image": None, "audio": None, "video": None}
+        if file_type == "image": msg_data["image"] = b64
+        elif file_type == "video": msg_data["video"] = b64
             
         global_db["messages"][server][channel].append(msg_data)
+        global_db["user_xp"][session_id] += 1
         st.rerun()
 
 # --- MAIN CHAT ---
@@ -118,12 +121,15 @@ with chat_col:
             "user": st.session_state.user_name, "time": datetime.datetime.now().strftime("%I:%M %p"), 
             "content": prompt, "image": None, "audio": None, "video": None
         })
+        global_db["user_xp"][session_id] += 1
         st.rerun()
 
 # --- MEMBER LIST ---
 with member_col:
     st.write("### Members")
     for uid, data in global_db["active_users"].items():
+        user_xp = global_db["user_xp"].get(uid, 0)
+        u_lvl = (user_xp // 5) + 1
         is_me = " (You)" if uid == session_id else ""
-        st.markdown(f'<div class="member-box">🟢 <b>{data["name"]}</b>{is_me}<br><span class="status-text">{data["status"]}</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="member-box">🟢 <b>{data["name"]}</b> <small>(Lvl {u_lvl})</small>{is_me}<br><span class="status-text">{data["status"]}</span></div>', unsafe_allow_html=True)
     st.button("🔄 Refresh")
