@@ -5,34 +5,6 @@ import base64
 # --- APP CONFIG ---
 st.set_page_config(page_title="Gooncord", page_icon="💀", layout="wide")
 
-# --- GOON MODE TOGGLE ---
-with st.sidebar:
-    st.title("Gooncord 💀")
-    goon_mode = st.toggle("🟣 GOON MODE", value=False)
-
-# --- THEME LOGIC ---
-if goon_mode:
-    primary_color = "#bc13fe" 
-    bg_color = "#000000"
-    text_color = "#39ff14" 
-    st.markdown(f"""
-        <style>
-            .stApp {{ background-color: {bg_color}; color: {text_color}; }}
-            [data-testid="stSidebar"] {{ background-color: #1a0033; border-right: 2px solid {primary_color}; }}
-            .member-box {{ background-color: #000000; border: 1px solid {primary_color}; color: {text_color}; box-shadow: 0 0 10px {primary_color}; padding: 8px; border-radius: 4px; margin-bottom: 5px; }}
-            .stChatMessage {{ background-color: #111; border: 1px solid {text_color} !important; box-shadow: 0 0 5px {text_color}; }}
-            h1, h2, h3, p, span {{ color: {text_color} !important; }}
-        </style>
-        """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-        <style>
-            [data-testid="stSidebar"] { background-color: #2f3136; }
-            .member-box { background-color: #1e1f22; padding: 8px; border-radius: 4px; margin-bottom: 5px; font-size: 0.85rem;}
-            .status-text { color: #b9bbbe; font-style: italic; font-size: 0.8rem; }
-        </style>
-        """, unsafe_allow_html=True)
-
 # --- GLOBAL SHARED DATABASE ---
 @st.cache_resource
 def get_global_data():
@@ -46,31 +18,56 @@ def get_global_data():
 
 global_db = get_global_data()
 
-# --- SESSION STATE ---
+# --- SESSION STATE INITIALIZATION ---
 if "user_name" not in st.session_state:
     st.session_state.user_name = f"Gooner_{id(st.session_state) % 1000}"
 if "my_status" not in st.session_state:
     st.session_state.my_status = "Chilling"
 
+# --- THEME LOGIC ---
+with st.sidebar:
+    st.title("Gooncord 💀")
+    goon_mode = st.toggle("🟣 GOON MODE", value=False)
+
+if goon_mode:
+    st.markdown(f"""
+        <style>
+            .stApp {{ background-color: #000; color: #39ff14; }}
+            [data-testid="stSidebar"] {{ background-color: #1a0033; border-right: 2px solid #bc13fe; }}
+            .member-box {{ background-color: #000; border: 1px solid #bc13fe; color: #39ff14; box-shadow: 0 0 10px #bc13fe; padding: 8px; border-radius: 4px; margin-bottom: 5px; }}
+            .stChatMessage {{ background-color: #111; border: 1px solid #39ff14 !important; }}
+            h1, h2, h3, p, span, label {{ color: #39ff14 !important; }}
+        </style>
+        """, unsafe_allow_html=True)
+else:
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] { background-color: #2f3136; }
+            .member-box { background-color: #1e1f22; padding: 8px; border-radius: 4px; margin-bottom: 5px; font-size: 0.85rem;}
+            .status-text { color: #b9bbbe; font-style: italic; font-size: 0.8rem; }
+        </style>
+        """, unsafe_allow_html=True)
+
 # --- SIDEBAR CONTENT ---
 with st.sidebar:
-    # --- NEW: PROFILE SETTINGS ---
+    # --- FIXED: PROFILE SETTINGS ---
     with st.expander("👤 Profile Settings", expanded=True):
-        new_name = st.text_input("Username", value=st.session_state.user_name)
-        new_stat = st.text_input("Status", value=st.session_state.my_status)
+        input_name = st.text_input("Username", value=st.session_state.user_name)
+        input_stat = st.text_input("Status", value=st.session_state.my_status)
         
         if st.button("Save Profile"):
-            # Remove old name from global list if it changed
-            if new_name != st.session_state.user_name:
-                global_db["active_users"].pop(st.session_state.user_name, None)
+            # Clean up old identity
+            if st.session_state.user_name in global_db["active_users"]:
+                del global_db["active_users"][st.session_state.user_name]
             
-            st.session_state.user_name = new_name
-            st.session_state.my_status = new_stat
-            global_db["active_users"][new_name] = new_stat
-            st.success("Profile Updated!")
+            # Update local and global state
+            st.session_state.user_name = input_name
+            st.session_state.my_status = input_stat
+            global_db["active_users"][input_name] = input_stat
+            st.success("Updated!")
             st.rerun()
 
-    # Register current user in global list
+    # Ensure user is always in the global list
     global_db["active_users"][st.session_state.user_name] = st.session_state.my_status
 
     st.divider()
@@ -78,18 +75,28 @@ with st.sidebar:
     channel = st.radio("Channels", list(global_db["messages"][server].keys()))
     
     st.divider()
-    st.write("### 📤 Upload Media")
+    st.write("### 🎤 Goon Sounds")
     
-    img_file = st.file_uploader("Send Image", type=["png", "jpg", "jpeg"], key="img")
-    if img_file and st.button("🖼️ Post Image"):
-        b64 = base64.b64encode(img_file.getvalue()).decode()
-        global_db["messages"][server][channel].append({"user": st.session_state.user_name, "time": datetime.datetime.now().strftime("%I:%M %p"), "content": "", "image": b64, "audio": None})
+    # New Audio Input (Recording)
+    recorded_audio = st.audio_input("Record a message")
+    if recorded_audio and st.button("📤 Send Recording"):
+        b64 = base64.b64encode(recorded_audio.read()).decode()
+        global_db["messages"][server][channel].append({
+            "user": st.session_state.user_name, 
+            "time": datetime.datetime.now().strftime("%I:%M %p"), 
+            "content": "", "image": None, "audio": b64
+        })
         st.rerun()
 
-    audio_file = st.file_uploader("Send Goon Sound", type=["mp3", "wav"], key="audio")
-    if audio_file and st.button("🔊 Post Audio"):
-        b64 = base64.b64encode(audio_file.getvalue()).decode()
-        global_db["messages"][server][channel].append({"user": st.session_state.user_name, "time": datetime.datetime.now().strftime("%I:%M %p"), "content": "", "image": None, "audio": b64})
+    # Image Upload
+    img_file = st.file_uploader("Upload Image", type=["png", "jpg", "jpeg"])
+    if img_file and st.button("🖼️ Post Image"):
+        b64 = base64.b64encode(img_file.getvalue()).decode()
+        global_db["messages"][server][channel].append({
+            "user": st.session_state.user_name, 
+            "time": datetime.datetime.now().strftime("%I:%M %p"), 
+            "content": "", "image": b64, "audio": None
+        })
         st.rerun()
 
 # --- MAIN CHAT ---
@@ -104,10 +111,14 @@ with chat_col:
             st.markdown(f"**{msg['user']}** <small style='color: gray;'>{msg['time']}</small>", unsafe_allow_html=True)
             if msg.get("content"): st.write(msg["content"])
             if msg.get("image"): st.image(f"data:image/png;base64,{msg['image']}", use_container_width=True)
-            if msg.get("audio"): st.audio(base64.b64decode(msg["audio"]), format="audio/mp3")
+            if msg.get("audio"): st.audio(base64.b64decode(msg["audio"]), format="audio/wav")
 
     if prompt := st.chat_input(f"Message {channel}"):
-        global_db["messages"][server][channel].append({"user": st.session_state.user_name, "time": datetime.datetime.now().strftime("%I:%M %p"), "content": prompt, "image": None, "audio": None})
+        global_db["messages"][server][channel].append({
+            "user": st.session_state.user_name, 
+            "time": datetime.datetime.now().strftime("%I:%M %p"), 
+            "content": prompt, "image": None, "audio": None
+        })
         st.rerun()
 
 # --- MEMBER LIST ---
@@ -122,5 +133,4 @@ with member_col:
             </div>
         ''', unsafe_allow_html=True)
     
-    if st.button("🔄 Refresh"): 
-        st.rerun()
+    st.button("🔄 Refresh Chat")
