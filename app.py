@@ -41,7 +41,7 @@ def get_global_data():
             "The Citadel": {"# general": [], "# memes": []},
             "Deep Thoughts": {"# philosophy": [], "# logic": []}
         },
-        "active_users": {} # Stores {user_id: {"status": "text", "last_seen": time}}
+        "active_users": {} 
     }
 
 global_db = get_global_data()
@@ -52,21 +52,30 @@ if "user_name" not in st.session_state:
 if "my_status" not in st.session_state:
     st.session_state.my_status = "Chilling"
 
-# Register/Update user in global status list
-global_db["active_users"][st.session_state.user_name] = st.session_state.my_status
-
 # --- SIDEBAR CONTENT ---
 with st.sidebar:
+    # --- NEW: PROFILE SETTINGS ---
+    with st.expander("👤 Profile Settings", expanded=True):
+        new_name = st.text_input("Username", value=st.session_state.user_name)
+        new_stat = st.text_input("Status", value=st.session_state.my_status)
+        
+        if st.button("Save Profile"):
+            # Remove old name from global list if it changed
+            if new_name != st.session_state.user_name:
+                global_db["active_users"].pop(st.session_state.user_name, None)
+            
+            st.session_state.user_name = new_name
+            st.session_state.my_status = new_stat
+            global_db["active_users"][new_name] = new_stat
+            st.success("Profile Updated!")
+            st.rerun()
+
+    # Register current user in global list
+    global_db["active_users"][st.session_state.user_name] = st.session_state.my_status
+
+    st.divider()
     server = st.selectbox("Select Server", list(global_db["messages"].keys()))
     channel = st.radio("Channels", list(global_db["messages"][server].keys()))
-    
-    st.divider()
-    st.write("### ✨ My Status")
-    new_status = st.text_input("Set your gooning status:", value=st.session_state.my_status)
-    if st.button("Update Status"):
-        st.session_state.my_status = new_status
-        global_db["active_users"][st.session_state.user_name] = new_status
-        st.rerun()
     
     st.divider()
     st.write("### 📤 Upload Media")
@@ -105,13 +114,13 @@ with chat_col:
 with member_col:
     st.write("### Members")
     for user, status in global_db["active_users"].items():
-        is_me = "(You)" if user == st.session_state.user_name else ""
+        is_me = " (You)" if user == st.session_state.user_name else ""
         st.markdown(f'''
             <div class="member-box">
-                🟢 <b>{user}</b> {is_me}<br>
+                🟢 <b>{user}</b>{is_me}<br>
                 <span class="status-text">{status}</span>
             </div>
         ''', unsafe_allow_html=True)
     
-    if st.button("🔄 Refresh Chat & Status"): 
+    if st.button("🔄 Refresh"): 
         st.rerun()
