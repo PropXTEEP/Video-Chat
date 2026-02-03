@@ -1,67 +1,117 @@
 import streamlit as st
-import streamlit.components.v1 as components
+import datetime
+import base64
 
-# --- Page Config ---
-st.set_page_config(
-    page_title="Streamlit Video Conference",
-    page_icon="📹",
-    layout="wide"
-)
+# --- APP CONFIG ---
+st.set_page_config(page_title="Gooncord", page_icon="💀", layout="wide")
 
-# --- Sidebar ---
+# --- GOON MODE TOGGLE ---
 with st.sidebar:
-    st.header("Settings")
-    
-    # User inputs
-    username = st.text_input("Your Name", value="User")
-    room_name = st.text_input("Room Name", value="StreamlitConferenceRoom")
-    
-    st.markdown("---")
-    st.markdown(
-        """
-        **How to use:**
-        1. Enter a **Room Name** (share this with your team).
-        2. Enter your **Name**.
-        3. The video conference will load automatically.
-        4. Send the URL to up to 2 other people to join!
-        """
-    )
-    
-    st.warning("Note: You must allow camera/microphone permissions in your browser.")
+    st.title("Gooncord 💀")
+    goon_mode = st.toggle("🟣 GOON MODE", value=False)
 
-# --- Main Interface ---
-st.title("📹 Live Video Conference")
-
-# Sanitize room name to ensure valid URL
-# Replaces spaces with dashes and removes special characters
-safe_room_name = "".join(c if c.isalnum() else "-" for c in room_name).strip("-")
-
-if not safe_room_name:
-    st.info("Please enter a room name in the sidebar to start.")
+# --- THEME LOGIC ---
+if goon_mode:
+    primary_color = "#bc13fe" 
+    bg_color = "#000000"
+    text_color = "#39ff14" 
+    st.markdown(f"""
+        <style>
+            .stApp {{ background-color: {bg_color}; color: {text_color}; }}
+            [data-testid="stSidebar"] {{ background-color: #1a0033; border-right: 2px solid {primary_color}; }}
+            .member-box {{ background-color: #000000; border: 1px solid {primary_color}; color: {text_color}; box-shadow: 0 0 10px {primary_color}; padding: 8px; border-radius: 4px; margin-bottom: 5px; }}
+            .stChatMessage {{ background-color: #111; border: 1px solid {text_color} !important; box-shadow: 0 0 5px {text_color}; }}
+            h1, h2, h3, p, span {{ color: {text_color} !important; }}
+        </style>
+        """, unsafe_allow_html=True)
 else:
-    # --- Jitsi Meet Embed ---
-    # We use the public Jitsi Meet instance.
-    # We construct a URL with the room name and user display name.
-    
-    jitsi_url = f"https://meet.jit.si/{safe_room_name}"
-    
-    # Jitsi allows passing config via hash params, but for simple embedding,
-    # just the URL is enough. The user will set their name inside the UI 
-    # if not passed via API, but we can try to pass it if Jitsi supports deep linking specific params.
-    # For stability, we stick to the clean room URL.
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] { background-color: #2f3136; }
+            .member-box { background-color: #1e1f22; padding: 8px; border-radius: 4px; margin-bottom: 5px; font-size: 0.85rem;}
+            .status-text { color: #b9bbbe; font-style: italic; font-size: 0.8rem; }
+        </style>
+        """, unsafe_allow_html=True)
 
-    st.success(f"Connected to room: **{safe_room_name}**")
+# --- GLOBAL SHARED DATABASE ---
+@st.cache_resource
+def get_global_data():
+    return {
+        "messages": {
+            "The Citadel": {"# general": [], "# memes": []},
+            "Deep Thoughts": {"# philosophy": [], "# logic": []}
+        },
+        "active_users": {} # Stores {user_id: {"status": "text", "last_seen": time}}
+    }
+
+global_db = get_global_data()
+
+# --- SESSION STATE ---
+if "user_name" not in st.session_state:
+    st.session_state.user_name = f"Gooner_{id(st.session_state) % 1000}"
+if "my_status" not in st.session_state:
+    st.session_state.my_status = "Chilling"
+
+# Register/Update user in global status list
+global_db["active_users"][st.session_state.user_name] = st.session_state.my_status
+
+# --- SIDEBAR CONTENT ---
+with st.sidebar:
+    server = st.selectbox("Select Server", list(global_db["messages"].keys()))
+    channel = st.radio("Channels", list(global_db["messages"][server].keys()))
     
-    # Create a container for the video
-    with st.container():
-        # Embed Jitsi using an iframe. 
-        # 'allow' parameters are crucial for browser permissions.
-        components.html(
-            f"""
-            <iframe allow="camera; microphone; display-capture; fullscreen" 
-                    src="{jitsi_url}" 
-                    style="height: 600px; width: 100%; border: none;">
-            </iframe>
-            """,
-            height=600,
-        )
+    st.divider()
+    st.write("### ✨ My Status")
+    new_status = st.text_input("Set your gooning status:", value=st.session_state.my_status)
+    if st.button("Update Status"):
+        st.session_state.my_status = new_status
+        global_db["active_users"][st.session_state.user_name] = new_status
+        st.rerun()
+    
+    st.divider()
+    st.write("### 📤 Upload Media")
+    
+    img_file = st.file_uploader("Send Image", type=["png", "jpg", "jpeg"], key="img")
+    if img_file and st.button("🖼️ Post Image"):
+        b64 = base64.b64encode(img_file.getvalue()).decode()
+        global_db["messages"][server][channel].append({"user": st.session_state.user_name, "time": datetime.datetime.now().strftime("%I:%M %p"), "content": "", "image": b64, "audio": None})
+        st.rerun()
+
+    audio_file = st.file_uploader("Send Goon Sound", type=["mp3", "wav"], key="audio")
+    if audio_file and st.button("🔊 Post Audio"):
+        b64 = base64.b64encode(audio_file.getvalue()).decode()
+        global_db["messages"][server][channel].append({"user": st.session_state.user_name, "time": datetime.datetime.now().strftime("%I:%M %p"), "content": "", "image": None, "audio": b64})
+        st.rerun()
+
+# --- MAIN CHAT ---
+chat_col, member_col = st.columns([4, 1])
+
+with chat_col:
+    st.header(f"💬 {channel}")
+    messages = global_db["messages"][server][channel]
+    
+    for msg in messages:
+        with st.chat_message("user"):
+            st.markdown(f"**{msg['user']}** <small style='color: gray;'>{msg['time']}</small>", unsafe_allow_html=True)
+            if msg.get("content"): st.write(msg["content"])
+            if msg.get("image"): st.image(f"data:image/png;base64,{msg['image']}", use_container_width=True)
+            if msg.get("audio"): st.audio(base64.b64decode(msg["audio"]), format="audio/mp3")
+
+    if prompt := st.chat_input(f"Message {channel}"):
+        global_db["messages"][server][channel].append({"user": st.session_state.user_name, "time": datetime.datetime.now().strftime("%I:%M %p"), "content": prompt, "image": None, "audio": None})
+        st.rerun()
+
+# --- MEMBER LIST ---
+with member_col:
+    st.write("### Members")
+    for user, status in global_db["active_users"].items():
+        is_me = "(You)" if user == st.session_state.user_name else ""
+        st.markdown(f'''
+            <div class="member-box">
+                🟢 <b>{user}</b> {is_me}<br>
+                <span class="status-text">{status}</span>
+            </div>
+        ''', unsafe_allow_html=True)
+    
+    if st.button("🔄 Refresh Chat & Status"): 
+        st.rerun()
